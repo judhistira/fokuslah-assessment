@@ -1,0 +1,8 @@
+Kita akan mengembangkan aplikasi matematika bernama Fokuslah dengan gaya Duolingo
+Pertama, aku ingin kamu membaca dan menganalisa struktur file dan folder untuk memahami tech stack dan bagaimana aplikasi kita akan bekerja
+Untuk setiap aksi yang kita lakukan, tolong update session.txt dengan menambahkan baris baru tanpa menghapus baris lama agar agar kita bisa melanjutkan development session nanti
+Kamu tidak perlu melakukan test atau menjalankan server sama sekali
+Jangan lakukan hal yang tidak saya instruksikan
+Eksekusi perintah tahap per tahap
+
+Apa kamu sudah mengerti?
