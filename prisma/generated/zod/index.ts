@@ -20,11 +20,28 @@ export const SessionScalarFieldEnumSchema = z.enum(['sessionToken','userId','exp
 
 export const VerificationTokenScalarFieldEnumSchema = z.enum(['identifier','token','expires']);
 
+export const LessonScalarFieldEnumSchema = z.enum(['id','title','description','order','createdAt','updatedAt']);
+
+export const ProblemScalarFieldEnumSchema = z.enum(['id','lessonId','type','question','options','answer','order','createdAt','updatedAt']);
+
+export const UserLessonProgressScalarFieldEnumSchema = z.enum(['id','userId','lessonId','completed','percentage','createdAt','updatedAt']);
+
+export const UserProblemAttemptScalarFieldEnumSchema = z.enum(['id','userId','problemId','attemptId','answer','isCorrect','xpEarned','createdAt','updatedAt']);
+
+export const UserStreakScalarFieldEnumSchema = z.enum(['id','userId','currentStreak','longestStreak','lastActive','createdAt','updatedAt']);
+
+export const UserProfileScalarFieldEnumSchema = z.enum(['id','userId','totalXP','progress','createdAt','updatedAt']);
+
 export const SortOrderSchema = z.enum(['asc','desc']);
 
 export const QueryModeSchema = z.enum(['default','insensitive']);
 
 export const NullsOrderSchema = z.enum(['first','last']);
+
+export const ProblemTypeSchema = z.enum(['MULTIPLE_CHOICE','INPUT']);
+
+export type ProblemTypeType = `${z.infer<typeof ProblemTypeSchema>}`
+
 /////////////////////////////////////////
 // MODELS
 /////////////////////////////////////////
@@ -94,3 +111,101 @@ export const VerificationTokenSchema = z.object({
 })
 
 export type VerificationToken = z.infer<typeof VerificationTokenSchema>
+
+/////////////////////////////////////////
+// LESSON SCHEMA
+/////////////////////////////////////////
+
+export const LessonSchema = z.object({
+  id: z.string().cuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  order: z.number().int(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type Lesson = z.infer<typeof LessonSchema>
+
+/////////////////////////////////////////
+// PROBLEM SCHEMA
+/////////////////////////////////////////
+
+export const ProblemSchema = z.object({
+  type: ProblemTypeSchema,
+  id: z.string().cuid(),
+  lessonId: z.string(),
+  question: z.string(),
+  options: z.string().array(),
+  answer: z.string(),
+  order: z.number().int(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type Problem = z.infer<typeof ProblemSchema>
+
+/////////////////////////////////////////
+// USER LESSON PROGRESS SCHEMA
+/////////////////////////////////////////
+
+export const UserLessonProgressSchema = z.object({
+  id: z.string().cuid(),
+  userId: z.string(),
+  lessonId: z.string(),
+  completed: z.boolean(),
+  percentage: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type UserLessonProgress = z.infer<typeof UserLessonProgressSchema>
+
+/////////////////////////////////////////
+// USER PROBLEM ATTEMPT SCHEMA
+/////////////////////////////////////////
+
+export const UserProblemAttemptSchema = z.object({
+  id: z.string().cuid(),
+  userId: z.string(),
+  problemId: z.string(),
+  attemptId: z.string(),
+  answer: z.string(),
+  isCorrect: z.boolean(),
+  xpEarned: z.number().int(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type UserProblemAttempt = z.infer<typeof UserProblemAttemptSchema>
+
+/////////////////////////////////////////
+// USER STREAK SCHEMA
+/////////////////////////////////////////
+
+export const UserStreakSchema = z.object({
+  id: z.string().cuid(),
+  userId: z.string(),
+  currentStreak: z.number().int(),
+  longestStreak: z.number().int(),
+  lastActive: z.coerce.date(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type UserStreak = z.infer<typeof UserStreakSchema>
+
+/////////////////////////////////////////
+// USER PROFILE SCHEMA
+/////////////////////////////////////////
+
+export const UserProfileSchema = z.object({
+  id: z.string().cuid(),
+  userId: z.string(),
+  totalXP: z.number().int(),
+  progress: z.number(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type UserProfile = z.infer<typeof UserProfileSchema>

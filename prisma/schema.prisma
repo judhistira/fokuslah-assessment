@@ -38,6 +38,12 @@ model User {
   accounts Account[]
   sessions Session[]
 
+  // Math learning app relations
+  lessonsProgress UserLessonProgress[]
+  problemAttempts UserProblemAttempt[]
+  streak          UserStreak?
+  profile         UserProfile?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -82,4 +88,106 @@ model VerificationToken {
   expires    DateTime
 
   @@id([identifier, token])
+}
+
+// Math learning app models
+
+model Lesson {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  order       Int       @unique
+  problems    Problem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  UserLessonProgress UserLessonProgress[]
+}
+
+model Problem {
+  id       String      @id @default(cuid())
+  lessonId String
+  lesson   Lesson      @relation(fields: [lessonId], references: [id])
+  type     ProblemType
+  question String
+  options  String[] // For multiple choice options
+  answer   String // Correct answer (for multiple choice, this will match one of the options)
+  order    Int
+
+  attempts UserProblemAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lessonId])
+}
+
+enum ProblemType {
+  MULTIPLE_CHOICE
+  INPUT
+}
+
+model UserLessonProgress {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id])
+  lessonId   String
+  lesson     Lesson  @relation(fields: [lessonId], references: [id])
+  completed  Boolean @default(false)
+  percentage Float   @default(0) // Progress percentage within the lesson
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+}
+
+model UserProblemAttempt {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  problemId String
+  problem   Problem @relation(fields: [problemId], references: [id])
+  attemptId String // For idempotency - unique identifier for this attempt
+  answer    String // User's answer
+  isCorrect Boolean
+  xpEarned  Int     @default(10) // XP per correct answer
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([attemptId]) // Ensures idempotency
+  @@index([userId])
+  @@index([problemId])
+  @@index([createdAt])
+}
+
+model UserStreak {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  currentStreak Int      @default(0)
+  longestStreak Int      @default(0)
+  lastActive    DateTime // Last UTC day the user completed a problem
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId])
+}
+
+model UserProfile {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
+  totalXP  Int    @default(0)
+  progress Float  @default(0) // Overall progress percentage
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId])
 }

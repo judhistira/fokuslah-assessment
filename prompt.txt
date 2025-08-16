@@ -6,3 +6,29 @@ Jangan lakukan hal yang tidak saya instruksikan
 Eksekusi perintah tahap per tahap
 
 Apa kamu sudah mengerti?
+
+Sekarang mari kita fokus dalam mengembangkan schema database yang dapat mendukung fitur berikut:
+1. Build a Duolingo-style math learning app for teenagers where they can: 
+• View math lessons in a simple list format
+• A lesson can have multiple questions/problems
+• Complete interactive math problems (multiple choice + input) and get graded
+• Earn points/XP and maintain their streak • See engaging post-lesson progress reveals
+
+2. XP, Streak & Idempotency Rules:
+• XP Scoring: Each correct answer grants XP (you choose a simple per-problem value and
+document it)
+• Streak Logic: Increments if user completes ≥1 problem on a different UTC day than their
+last activity; resets if a day is missed
+• Idempotency: attempt_id must make /submit idempotent - resubmitting the same
+attempt returns identical results without double-granting XP
+
+3. Profil dan Status User terkait XP gained, streak status, engaging progress reveal, total XP, streak counter, progress percentage
+
+4. Nantinya data dapat diakses melalui API berikut:
+GET /api/lessons - Return lessons with completion/progress status
+• GET /api/lessons/:id - Get lesson + problems (don't leak correct answers to frontend)
+• POST /api/lessons/:id/submit - Submit answers with attempt_id ; return XP, streak,
+progress (idempotent)
+• GET /api/profile - Return user stats (total XP, current/best streak, progress percentage)
+
+Kamu cukup membuat schema-nya saja untuk saat ini

@@ -1,0 +1,10 @@
+1. Menganalisis struktur file dan folder proyek.
+2. Mengidentifikasi tech stack: Next.js, React, TypeScript, Tailwind CSS, Prisma, NextAuth.js, Hono, React Query, dll.
+3. Memahami cara kerja aplikasi: autentikasi dengan NextAuth.js, routing dengan App Router, manajemen state dengan Zustand, fetching data dengan React Query.
+4. Memahami implementasi Hono API dengan gaya RPC.
+5. Memahami integrasi React Query dengan RPC client dari Hono untuk fetching dan mutating data secara typesafe.
+6. Membuat schema database untuk aplikasi matematika "Fokuslah" dengan model-model untuk Lesson, Problem, UserLessonProgress, UserProblemAttempt, UserStreak, dan UserProfile.
+7. Membuat seed data untuk pelajaran "Basic Arithmetic", "Multiplication Mastery", dan "Division Basics" dengan masing-masing 5 pertanyaan.
+8. Menjalankan script seeding untuk mengisi database dengan data pelajaran dan soal.
+9. Membuat API endpoints dengan Hono untuk fitur lessons: get lessons, get lesson, submit lesson, dan get profile.
+10. Membuat API hooks dengan React Query untuk mengakses API endpoints tersebut.
