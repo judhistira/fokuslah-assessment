@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 
-import { Toaster } from "@/components/ui/sonner";
+import { Navbar } from "@/components/layout/navbar";
 
-import { QueryProvider } from "@/providers/query-provider";
-
+import { QueryProvider } from "../providers/query-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Fokuslah",
-  description: "Ultimate App for SPM Preparation",
+  description: "Ultimate App for Math Learning",
 };
 
 export default function RootLayout({
@@ -35,7 +35,12 @@ export default function RootLayout({
       >
         <SessionProvider>
           <QueryProvider>
-            {children}
+            <div className="flex min-h-screen flex-col">
+              <Navbar />
+              <main className="min-h-[calc(100vh-80px)] flex-1 pb-16 md:mt-0 md:pb-0">
+                {children}
+              </main>
+            </div>
             <Toaster richColors />
           </QueryProvider>
         </SessionProvider>

@@ -39,10 +39,12 @@ model User {
   sessions Session[]
 
   // Math learning app relations
-  lessonsProgress UserLessonProgress[]
-  problemAttempts UserProblemAttempt[]
-  streak          UserStreak?
-  profile         UserProfile?
+  lessonsProgress     UserLessonProgress[]
+  problemAttempts     UserProblemAttempt[]
+  streak              UserStreak?
+  profile             UserProfile?
+  temporaryAnswers    TemporaryAnswer[]
+  xpTransactions      UserXP[]              // New XP transactions relation
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -93,34 +95,50 @@ model VerificationToken {
 // Math learning app models
 
 model Lesson {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   title       String
   description String?
-  order       Int       @unique
+  order       Int      @unique
   problems    Problem[]
+  userProgress UserLessonProgress[]
+  temporaryAnswers TemporaryAnswer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  UserLessonProgress UserLessonProgress[]
 }
 
 model Problem {
-  id       String      @id @default(cuid())
-  lessonId String
-  lesson   Lesson      @relation(fields: [lessonId], references: [id])
-  type     ProblemType
-  question String
-  options  String[] // For multiple choice options
-  answer   String // Correct answer (for multiple choice, this will match one of the options)
-  order    Int
+  id          String   @id @default(cuid())
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id])
+  type        ProblemType
+  question    String
+  answer      String   // Correct answer (for multiple choice, this will match one of the options)
+  order       Int
 
-  attempts UserProblemAttempt[]
+  // Relations
+  options     ProblemOption[]  // For multiple choice options
+  attempts    UserProblemAttempt[]
+  temporaryAnswers TemporaryAnswer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([lessonId])
+}
+
+model ProblemOption {
+  id       String @id @default(cuid())
+  problemId String
+  problem  Problem @relation(fields: [problemId], references: [id])
+  text     String
+  order    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([problemId])
+  @@index([order])
 }
 
 enum ProblemType {
@@ -129,13 +147,13 @@ enum ProblemType {
 }
 
 model UserLessonProgress {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
-  user       User    @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
   lessonId   String
-  lesson     Lesson  @relation(fields: [lessonId], references: [id])
-  completed  Boolean @default(false)
-  percentage Float   @default(0) // Progress percentage within the lesson
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  completed  Boolean  @default(false)
+  percentage Float    @default(0) // Progress percentage within the lesson
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -146,20 +164,24 @@ model UserLessonProgress {
 }
 
 model UserProblemAttempt {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
-  problemId String
-  problem   Problem @relation(fields: [problemId], references: [id])
-  attemptId String // For idempotency - unique identifier for this attempt
-  answer    String // User's answer
-  isCorrect Boolean
-  xpEarned  Int     @default(10) // XP per correct answer
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  problemId    String
+  problem      Problem  @relation(fields: [problemId], references: [id])
+  attemptId    String   // For idempotency - unique identifier for this attempt
+  answer       String   // User's answer
+  isCorrect    Boolean
+  xpEarned     Int      @default(10) // XP per correct answer
+  
+  // Relation to XP entry for this attempt
+  // xpEntry      UserXP?  @relation(name: "UserProblemAttemptXP")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([attemptId]) // Ensures idempotency
+  @@unique([userId, problemId]) // Ensures one attempt per user per problem
   @@index([userId])
   @@index([problemId])
   @@index([createdAt])
@@ -179,15 +201,66 @@ model UserStreak {
   @@unique([userId])
 }
 
+model UserXP {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  amount           Int
+  sourceType       XPSourceType
+  sourceId         String   // ID of the source entity (e.g., UserProblemAttempt ID)
+  description      String   // Description of how XP was earned
+  category         XPCategory
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([sourceType, sourceId])
+  @@index([createdAt])
+}
+
 model UserProfile {
-  id       String @id @default(cuid())
-  userId   String
-  user     User   @relation(fields: [userId], references: [id])
-  totalXP  Int    @default(0)
-  progress Float  @default(0) // Overall progress percentage
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  totalXP          Int      @default(0) // Total XP earned by the user
+  progress         Float    @default(0) // Overall progress percentage
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId])
+}
+
+enum XPSourceType {
+  USER_PROBLEM_ATTEMPT
+  MANUAL_ADJUSTMENT
+  SPECIAL_ACHIEVEMENT
+  DAILY_STREAK
+}
+
+enum XPCategory {
+  CORRECT_ANSWER
+  STREAK_BONUS
+  ACHIEVEMENT
+  MANUAL
+}
+
+model TemporaryAnswer {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  problemId  String
+  problem    Problem  @relation(fields: [problemId], references: [id])
+  lessonId   String
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  answer     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, problemId])
+  @@index([userId])
+  @@index([problemId])
+  @@index([lessonId])
 }

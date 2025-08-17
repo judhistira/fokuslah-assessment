@@ -5,111 +5,131 @@ import { z } from "zod";
 
 import { getServerSession } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { awardXP } from "@/lib/xp-manager";
 
 const lessonsRouter = new Hono()
+
   // GET /api/lessons - Return lessons with completion/progress status
   .get("/", async (c) => {
     const userId = await getServerSession();
-    
+
     if (!userId) {
       throw new HTTPException(403, { message: "Unauthenticated" });
     }
-    
-    try {
-      const lessons = await prisma.lesson.findMany({
-        orderBy: { order: "asc" },
-        include: {
-          problems: {
-            select: {
-              id: true,
-            },
+
+    const lessonsWithProgress = await prisma.lesson.findMany({
+      orderBy: { order: "asc" },
+      include: {
+        problems: {
+          select: {
+            id: true,
           },
         },
-      });
-      
-      // Get user progress for each lesson
-      const lessonsWithProgress = await Promise.all(
-        lessons.map(async (lesson) => {
-          const progress = await prisma.userLessonProgress.findUnique({
-            where: {
-              userId_lessonId: {
-                userId,
-                lessonId: lesson.id,
-              },
-            },
-          });
-          
-          return {
-            ...lesson,
-            problemCount: lesson.problems.length,
-            completed: progress?.completed ?? false,
-            percentage: progress?.percentage ?? 0,
-          };
-        })
-      );
-      
-      return c.json({ data: lessonsWithProgress });
-    } catch (error) {
-      throw new HTTPException(500, { message: "Failed to fetch lessons" });
+        userProgress: {
+          where: {
+            userId,
+          },
+          select: {
+            completed: true,
+            percentage: true,
+          },
+        },
+      },
+    });
+
+    if (!lessonsWithProgress) {
+      console.log("Lessons not found");
+      throw new HTTPException(404, { message: "Lessons not found" });
     }
+
+    // Transform to the expected format
+    const result = lessonsWithProgress.map((lesson) => ({
+      id: lesson.id,
+      title: lesson.title,
+      description: lesson.description,
+      order: lesson.order,
+      problemCount: lesson.problems.length,
+      completed: lesson.userProgress[0]?.completed ?? false,
+      percentage: lesson.userProgress[0]?.percentage ?? 0,
+    }));
+
+    return c.json({ data: result });
   })
-  
+
   // GET /api/lessons/:id - Get lesson + problems (don't leak correct answers to frontend)
   .get("/:id", async (c) => {
     const userId = await getServerSession();
     const lessonId = c.req.param("id");
-    
+
     if (!userId) {
       throw new HTTPException(403, { message: "Unauthenticated" });
     }
-    
-    try {
-      const lesson = await prisma.lesson.findUnique({
-        where: { id: lessonId },
-        include: {
-          problems: {
-            orderBy: { order: "asc" },
-            select: {
-              id: true,
-              type: true,
-              question: true,
-              options: true,
-              order: true,
-              // Note: We intentionally don't select the 'answer' field to prevent leaking it to frontend
+
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        order: true,
+        problems: {
+          orderBy: { order: "asc" },
+          select: {
+            id: true,
+            type: true,
+            question: true,
+            order: true,
+            options: {
+              orderBy: { order: "asc" },
+              select: {
+                id: true,
+                text: true,
+              },
             },
+            // Note: We intentionally don't select the 'answer' field to prevent leaking it to frontend
           },
         },
-      });
-      
-      if (!lesson) {
-        throw new HTTPException(404, { message: "Lesson not found" });
-      }
-      
-      // Get user progress for this lesson
-      const progress = await prisma.userLessonProgress.findUnique({
-        where: {
-          userId_lessonId: {
+        userProgress: {
+          where: {
             userId,
-            lessonId: lesson.id,
+          },
+          select: {
+            completed: true,
+            percentage: true,
           },
         },
-      });
-      
-      return c.json({
-        data: {
-          ...lesson,
-          completed: progress?.completed ?? false,
-          percentage: progress?.percentage ?? 0,
-        },
-      });
-    } catch (error) {
-      if (error instanceof HTTPException) {
-        throw error;
-      }
-      throw new HTTPException(500, { message: "Failed to fetch lesson" });
+      },
+    });
+
+    if (!lesson) {
+      throw new HTTPException(404, { message: "Lesson not found" });
     }
+
+    // Transform problems to include options in the expected format
+    const transformedLesson = {
+      id: lesson.id,
+      title: lesson.title,
+      description: lesson.description,
+      order: lesson.order,
+      problems: lesson.problems.map((problem) => ({
+        id: problem.id,
+        type: problem.type,
+        question: problem.question,
+        order: problem.order,
+        options: problem.options.map((option) => ({
+          id: option.id,
+          text: option.text,
+        })),
+      })),
+      completed: lesson.userProgress[0]?.completed ?? false,
+      percentage: lesson.userProgress[0]?.percentage ?? 0,
+    };
+
+    return c.json({
+      data: transformedLesson,
+    });
   })
-  
+
   // POST /api/lessons/:id/submit - Submit answers with attempt_id ; return XP, streak, progress (idempotent)
   .post(
     "/:id/submit",
@@ -121,276 +141,368 @@ const lessonsRouter = new Hono()
           z.object({
             problemId: z.string(),
             answer: z.string(),
-          })
+          }),
         ),
-      })
+      }),
+    ),
+    async (c) => {
+      // --- 1. Authentication & Validation (Early Returns) ---
+      const userId = await getServerSession();
+      if (!userId) {
+        throw new HTTPException(403, { message: "Unauthenticated" });
+      }
+
+      const { attemptId, answers } = c.req.valid("json");
+      if (answers.length !== 1) {
+        throw new HTTPException(400, {
+          message: "Exactly one answer expected per submission",
+        });
+      }
+
+      const { problemId, answer } = answers[0];
+      const lessonId = c.req.param("id");
+
+      const problem = await prisma.problem.findFirst({
+        where: { id: problemId, lessonId: lessonId },
+      });
+
+      if (!problem) {
+        throw new HTTPException(404, {
+          message: "Problem not found in this lesson",
+        });
+      }
+
+      // --- 2. Idempotency Check (Early Return) ---
+      const existingAttemptById = await prisma.userProblemAttempt.findFirst({
+        where: { userId, problemId, attemptId },
+      });
+
+      if (existingAttemptById) {
+        const [userStreak, userProfile] = await Promise.all([
+          prisma.userStreak.findUnique({ where: { userId } }),
+          prisma.userProfile.findUnique({ where: { userId } }),
+        ]);
+
+        return c.json({
+          data: {
+            xp: existingAttemptById.xpEarned,
+            totalXp: userProfile?.totalXP ?? 0,
+            streak: userStreak?.currentStreak ?? 0,
+            longestStreak: userStreak?.longestStreak ?? 0,
+            message: "Attempt already processed",
+            isCorrect: existingAttemptById.isCorrect,
+            wasNewlyCorrect: false, // Cannot be newly correct on a re-processed attempt
+          },
+        });
+      }
+
+      // --- 3. Process the Answer ---
+      const cleanProblemAnswer = problem.answer.trim();
+      const isCorrect =
+        cleanProblemAnswer.toLowerCase() === answer.trim().toLowerCase();
+
+      let wasNewlyCorrect = false;
+      let problemAttemptId: string;
+
+      const previousAttempt = await prisma.userProblemAttempt.findFirst({
+        where: { userId, problemId },
+        select: { id: true, isCorrect: true },
+      });
+
+      if (previousAttempt) {
+        problemAttemptId = previousAttempt.id;
+        if (!previousAttempt.isCorrect && isCorrect) {
+          wasNewlyCorrect = true;
+          await prisma.userProblemAttempt.update({
+            where: { id: previousAttempt.id },
+            data: { attemptId, answer, isCorrect, xpEarned: 10 },
+          });
+        }
+      } else {
+        wasNewlyCorrect = isCorrect;
+        const newAttempt = await prisma.userProblemAttempt.create({
+          data: {
+            userId,
+            problemId,
+            attemptId,
+            answer,
+            isCorrect,
+            xpEarned: isCorrect ? 10 : 0,
+          },
+          select: { id: true },
+        });
+        problemAttemptId = newAttempt.id;
+      }
+
+      // --- 4. Award XP & Update Streak ---
+      if (wasNewlyCorrect) {
+        await awardXP({
+          userId,
+          amount: 10,
+          category: "CORRECT_ANSWER",
+          description: `Correct answer for problem ${problemId}`,
+          sourceType: "USER_PROBLEM_ATTEMPT",
+          sourceId: problemAttemptId,
+        });
+      }
+
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+
+      // Pre-calculate streak logic outside of Prisma call
+      const existingStreak = await prisma.userStreak.findUnique({
+        where: { userId },
+      });
+
+      let newCurrentStreak: number;
+      let newLongestStreak: number;
+
+      if (!existingStreak) {
+        newCurrentStreak = wasNewlyCorrect ? 1 : 0;
+        newLongestStreak = wasNewlyCorrect ? 1 : 0;
+      } else {
+        const lastActive = new Date(existingStreak.lastActive);
+        lastActive.setUTCHours(0, 0, 0, 0);
+        const diffDays = Math.round(
+          (today.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24),
+        );
+
+        if (wasNewlyCorrect) {
+          if (diffDays === 1) {
+            newCurrentStreak = existingStreak.currentStreak + 1;
+          } else if (diffDays > 1) {
+            newCurrentStreak = 1;
+          } else if (diffDays === 0 && existingStreak.currentStreak === 0) {
+            newCurrentStreak = 1;
+          } else {
+            newCurrentStreak = existingStreak.currentStreak; // No change
+          }
+        } else {
+          if (diffDays > 1) {
+            newCurrentStreak = 0; // Reset if incorrect and missed days
+          } else {
+            newCurrentStreak = existingStreak.currentStreak; // No change
+          }
+        }
+        newLongestStreak = Math.max(
+          newCurrentStreak,
+          existingStreak.longestStreak,
+        );
+      }
+
+      const userStreak = await prisma.userStreak.upsert({
+        where: { userId },
+        create: {
+          userId,
+          currentStreak: newCurrentStreak,
+          longestStreak: newLongestStreak,
+          lastActive: today,
+        },
+        update: {
+          currentStreak: newCurrentStreak,
+          longestStreak: newLongestStreak,
+          lastActive: today,
+        },
+      });
+
+      // --- 5. Final Data Fetch & Return ---
+      const updatedUserProfile = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+
+      const message = isCorrect
+        ? wasNewlyCorrect
+          ? "Correct answer! You earned 10 XP."
+          : "Correct answer! You already answered this correctly before."
+        : "Incorrect answer. Try again!";
+
+      return c.json({
+        data: {
+          xp: wasNewlyCorrect ? 10 : 0,
+          totalXp: updatedUserProfile?.totalXP ?? 0,
+          streak: userStreak.currentStreak,
+          longestStreak: userStreak.longestStreak,
+          message,
+          isCorrect,
+          wasNewlyCorrect,
+        },
+      });
+    },
+  )
+
+  // POST /api/lessons/:id/save-progress - Save user's progress for a lesson
+  .post(
+    "/:id/save-progress",
+    zValidator(
+      "json",
+      z.object({
+        answers: z.array(
+          z.object({
+            problemId: z.string(),
+            answer: z.string(),
+          }),
+        ),
+      }),
     ),
     async (c) => {
       const userId = await getServerSession();
       const lessonId = c.req.param("id");
-      const { attemptId, answers } = c.req.valid("json");
-      
+      const { answers } = c.req.valid("json");
+
       if (!userId) {
         throw new HTTPException(403, { message: "Unauthenticated" });
       }
-      
+
       try {
-        // Check if this attempt has already been processed (idempotency)
-        const existingAttempt = await prisma.userProblemAttempt.findFirst({
-          where: {
-            attemptId,
-          },
-        });
-        
-        if (existingAttempt) {
-          // Return the same result as the previous attempt
-          const user = await prisma.user.findUnique({
-            where: { id: userId },
-            include: {
-              streak: true,
-              profile: true,
-            },
-          });
-          
-          return c.json({
-            data: {
-              xp: existingAttempt.xpEarned,
-              totalXp: user?.profile?.totalXP ?? 0,
-              streak: user?.streak?.currentStreak ?? 0,
-              message: "Attempt already processed",
-            },
-          });
-        }
-        
         // Verify that the lesson exists
         const lesson = await prisma.lesson.findUnique({
           where: { id: lessonId },
-          include: { problems: true },
         });
-        
+
         if (!lesson) {
           throw new HTTPException(404, { message: "Lesson not found" });
         }
-        
-        // Verify that all problems belong to this lesson
-        const problemIds = answers.map((a) => a.problemId);
-        const validProblems = lesson.problems.filter((p) =>
-          problemIds.includes(p.id)
-        );
-        
-        if (validProblems.length !== answers.length) {
-          throw new HTTPException(400, {
-            message: "Some problems do not belong to this lesson",
-          });
-        }
-        
-        // Process each answer
-        let correctAnswers = 0;
-        const xpPerProblem = 10; // As defined in the schema
-        const attempts = [];
-        
+
+        // Save each answer
         for (const { problemId, answer } of answers) {
-          const problem = lesson.problems.find((p) => p.id === problemId);
-          
-          if (!problem) {
-            continue; // Skip if problem not found
-          }
-          
-          const isCorrect = problem.answer === answer;
-          if (isCorrect) {
-            correctAnswers++;
-          }
-          
-          // Record the attempt
-          const attempt = await prisma.userProblemAttempt.create({
-            data: {
+          // Create or update the temporary answer record
+          await prisma.temporaryAnswer.upsert({
+            where: {
+              userId_problemId: {
+                userId,
+                problemId,
+              },
+            },
+            update: {
+              answer,
+            },
+            create: {
               userId,
               problemId,
-              attemptId, // Same attemptId for all problems in this submission
               answer,
-              isCorrect,
-              xpEarned: isCorrect ? xpPerProblem : 0,
-            },
-          });
-          
-          attempts.push(attempt);
-        }
-        
-        // Calculate XP earned
-        const xpEarned = correctAnswers * xpPerProblem;
-        
-        // Update user's total XP
-        const userProfile = await prisma.userProfile.upsert({
-          where: { userId },
-          update: {
-            totalXP: {
-              increment: xpEarned,
-            },
-          },
-          create: {
-            userId,
-            totalXP: xpEarned,
-          },
-        });
-        
-        // Update lesson progress
-        const totalProblems = lesson.problems.length;
-        const progressPercentage = totalProblems > 0 ? (correctAnswers / totalProblems) * 100 : 0;
-        
-        const lessonProgress = await prisma.userLessonProgress.upsert({
-          where: {
-            userId_lessonId: {
-              userId,
               lessonId,
             },
-          },
-          update: {
-            percentage: progressPercentage,
-            completed: progressPercentage === 100,
-          },
-          create: {
-            userId,
-            lessonId,
-            percentage: progressPercentage,
-            completed: progressPercentage === 100,
-          },
-        });
-        
-        // Update streak logic
-        let streakData = null;
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
-        
-        const userStreak = await prisma.userStreak.upsert({
-          where: { userId },
-          update: {},
-          create: {
-            userId,
-            currentStreak: 0,
-            longestStreak: 0,
-            lastActive: today,
-          },
-        });
-        
-        // Check if we need to increment streak
-        const lastActive = new Date(userStreak.lastActive);
-        lastActive.setUTCHours(0, 0, 0, 0);
-        
-        // Calculate the difference in days
-        const diffTime = Math.abs(today.getTime() - lastActive.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays > 1) {
-          // Reset streak if a day was missed
-          await prisma.userStreak.update({
-            where: { userId },
-            data: {
-              currentStreak: correctAnswers > 0 ? 1 : 0,
-              lastActive: today,
-            },
-          });
-        } else if (diffDays === 1 && correctAnswers > 0) {
-          // Increment streak if user completed >=1 problem on a different UTC day
-          const newStreak = userStreak.currentStreak + 1;
-          const longestStreak = Math.max(newStreak, userStreak.longestStreak);
-          
-          await prisma.userStreak.update({
-            where: { userId },
-            data: {
-              currentStreak: newStreak,
-              longestStreak,
-              lastActive: today,
-            },
-          });
-          
-          streakData = {
-            current: newStreak,
-            longest: longestStreak,
-          };
-        } else if (diffDays === 0 && correctAnswers > 0) {
-          // User is active today, but streak was already incremented
-          // We just need to update the lastActive date
-          await prisma.userStreak.update({
-            where: { userId },
-            data: {
-              lastActive: today,
-            },
           });
         }
-        
-        // Fetch updated streak data
-        if (!streakData) {
-          const updatedStreak = await prisma.userStreak.findUnique({
-            where: { userId },
-          });
-          
-          streakData = {
-            current: updatedStreak?.currentStreak ?? 0,
-            longest: updatedStreak?.longestStreak ?? 0,
-          };
-        }
-        
+
         return c.json({
-          data: {
-            xp: xpEarned,
-            totalXp: userProfile.totalXP,
-            streak: streakData.current,
-            longestStreak: streakData.longest,
-            message: `Correct: ${correctAnswers}/${answers.length}`,
-          },
+          success: true,
+          message: "Progress saved successfully",
         });
       } catch (error) {
         if (error instanceof HTTPException) {
           throw error;
         }
-        throw new HTTPException(500, { message: "Failed to submit answers" });
+        throw new HTTPException(500, { message: "Failed to save progress" });
       }
-    }
+    },
   )
-  
-  // GET /api/profile - Return user stats (total XP, current/best streak, progress percentage)
-  .get("/profile", async (c) => {
+
+  // GET /api/lessons/:id/saved-progress - Get user's saved progress for a lesson
+  .get("/:id/saved-progress", async (c) => {
     const userId = await getServerSession();
-    
+    const lessonId = c.req.param("id");
+
     if (!userId) {
       throw new HTTPException(403, { message: "Unauthenticated" });
     }
-    
+
     try {
-      // Get user profile
-      const userProfile = await prisma.userProfile.findUnique({
-        where: { userId },
+      // Verify that the lesson exists
+      const lesson = await prisma.lesson.findUnique({
+        where: { id: lessonId },
       });
-      
-      // Get user streak
-      const userStreak = await prisma.userStreak.findUnique({
-        where: { userId },
-      });
-      
-      // Calculate overall progress percentage
-      const totalLessons = await prisma.lesson.count();
-      const completedLessons = await prisma.userLessonProgress.count({
+
+      if (!lesson) {
+        throw new HTTPException(404, { message: "Lesson not found" });
+      }
+
+      // Get saved answers for this lesson
+      const savedAnswers = await prisma.temporaryAnswer.findMany({
         where: {
           userId,
-          completed: true,
+          lessonId,
+        },
+        select: {
+          problemId: true,
+          answer: true,
         },
       });
-      
-      const progressPercentage = totalLessons > 0 ? (completedLessons / totalLessons) * 100 : 0;
-      
-      return c.json({
-        data: {
-          totalXP: userProfile?.totalXP ?? 0,
-          progress: progressPercentage,
-          streak: {
-            current: userStreak?.currentStreak ?? 0,
-            longest: userStreak?.longestStreak ?? 0,
-          },
+
+      // Convert to object for easier lookup
+      const answersMap = savedAnswers.reduce(
+        (acc, curr) => {
+          acc[curr.problemId] = curr.answer;
+          return acc;
         },
+        {} as Record<string, string>,
+      );
+
+      return c.json({
+        data: answersMap,
       });
     } catch (error) {
-      throw new HTTPException(500, { message: "Failed to fetch profile" });
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+      throw new HTTPException(500, {
+        message: "Failed to fetch saved progress",
+      });
     }
+  })
+
+  // GET /api/lessons/:id/problem-attempts - Get attempt status for all problems in a lesson
+  .get("/:id/problem-attempts", async (c) => {
+    const userId = await getServerSession();
+    const lessonId = c.req.param("id");
+
+    if (!userId) {
+      throw new HTTPException(403, { message: "Unauthenticated" });
+    }
+
+    // Verify that the lesson exists
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: lessonId },
+    });
+
+    if (!lesson) {
+      throw new HTTPException(404, { message: "Lesson not found" });
+    }
+
+    // Get all attempts for this user and lesson
+    const attempts = await prisma.userProblemAttempt.findMany({
+      where: {
+        userId,
+        problem: {
+          lessonId: lessonId,
+        },
+      },
+      select: {
+        problemId: true,
+        isCorrect: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Create a map for quick lookup of latest attempt per problem
+    const attemptMap = new Map();
+    for (const attempt of attempts) {
+      // Only store the most recent attempt for each problem
+      if (!attemptMap.has(attempt.problemId)) {
+        attemptMap.set(attempt.problemId, {
+          isCorrect: attempt.isCorrect,
+          attempted: true,
+          lastAttempted: attempt.createdAt,
+        });
+      }
+    }
+
+    return c.json({
+      data: Object.fromEntries(attemptMap),
+    });
   });
 
 export { lessonsRouter };

@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 
+import { invalidateQueries } from "@/lib/query-invalidation";
+
 export const useSignOut = () => {
   const queryClient = useQueryClient();
 
@@ -11,9 +13,7 @@ export const useSignOut = () => {
     },
     onSuccess: () => {
       toast.success("Successfully signed out");
-      queryClient.invalidateQueries({
-        queryKey: ["auth"],
-      });
+      invalidateQueries.auth(queryClient);
     },
     onError: (err) => {
       toast.error(err.message);

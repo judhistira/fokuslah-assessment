@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { signIn } from "next-auth/react";
 import { toast } from "sonner";
 
+import { invalidateQueries } from "@/lib/query-invalidation";
+
 export const useSignIn = () => {
   const queryClient = useQueryClient();
 
@@ -20,9 +22,7 @@ export const useSignIn = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["auth"],
-      });
+      invalidateQueries.auth(queryClient);
     },
     onError: () => {
       toast.error("Invalid credentials");

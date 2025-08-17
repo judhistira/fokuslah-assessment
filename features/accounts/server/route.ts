@@ -42,6 +42,21 @@ export const authRouter = new Hono()
           username,
           email,
           password: hashedPassword,
+          // Create user profile upon registration
+          profile: {
+            create: {
+              totalXP: 0,
+              progress: 0
+            }
+          },
+          // Create initial user streak with default values
+          streak: {
+            create: {
+              currentStreak: 0,
+              longestStreak: 0,
+              lastActive: new Date(new Date().setUTCHours(0, 0, 0, 0))
+            }
+          }
         },
       });
 

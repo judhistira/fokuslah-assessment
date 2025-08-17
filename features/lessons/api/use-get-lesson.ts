@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { client } from "@/lib/rpc";
+import { QUERY_KEYS } from "@/lib/query-keys";
 
 interface Problem {
   id: string;
   type: "MULTIPLE_CHOICE" | "INPUT";
   question: string;
-  options: string[];
+  options: Array<{ id: string; text: string }>;
   order: number;
 }
 
-interface Lesson {
+export interface Lesson {
   id: string;
   title: string;
   description: string | null;
@@ -18,13 +19,11 @@ interface Lesson {
   problems: Problem[];
   completed: boolean;
   percentage: number;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export const useGetLesson = (id: string) => {
   const query = useQuery({
-    queryKey: ["lesson", id],
+    queryKey: QUERY_KEYS.LESSON(id),
     queryFn: async () => {
       const response = await client.api.lessons[":id"].$get({
         param: { id },
@@ -36,7 +35,7 @@ export const useGetLesson = (id: string) => {
       
       const { data } = await response.json();
       
-      return data as Lesson;
+      return data;
     },
     enabled: !!id, // Only run the query if id is truthy
   });

@@ -22,7 +22,9 @@ export const VerificationTokenScalarFieldEnumSchema = z.enum(['identifier','toke
 
 export const LessonScalarFieldEnumSchema = z.enum(['id','title','description','order','createdAt','updatedAt']);
 
-export const ProblemScalarFieldEnumSchema = z.enum(['id','lessonId','type','question','options','answer','order','createdAt','updatedAt']);
+export const ProblemScalarFieldEnumSchema = z.enum(['id','lessonId','type','question','answer','order','createdAt','updatedAt']);
+
+export const ProblemOptionScalarFieldEnumSchema = z.enum(['id','problemId','text','order','createdAt','updatedAt']);
 
 export const UserLessonProgressScalarFieldEnumSchema = z.enum(['id','userId','lessonId','completed','percentage','createdAt','updatedAt']);
 
@@ -30,7 +32,11 @@ export const UserProblemAttemptScalarFieldEnumSchema = z.enum(['id','userId','pr
 
 export const UserStreakScalarFieldEnumSchema = z.enum(['id','userId','currentStreak','longestStreak','lastActive','createdAt','updatedAt']);
 
+export const UserXPScalarFieldEnumSchema = z.enum(['id','userId','amount','sourceType','sourceId','description','category','createdAt','updatedAt']);
+
 export const UserProfileScalarFieldEnumSchema = z.enum(['id','userId','totalXP','progress','createdAt','updatedAt']);
+
+export const TemporaryAnswerScalarFieldEnumSchema = z.enum(['id','userId','problemId','lessonId','answer','createdAt','updatedAt']);
 
 export const SortOrderSchema = z.enum(['asc','desc']);
 
@@ -41,6 +47,14 @@ export const NullsOrderSchema = z.enum(['first','last']);
 export const ProblemTypeSchema = z.enum(['MULTIPLE_CHOICE','INPUT']);
 
 export type ProblemTypeType = `${z.infer<typeof ProblemTypeSchema>}`
+
+export const XPSourceTypeSchema = z.enum(['USER_PROBLEM_ATTEMPT','MANUAL_ADJUSTMENT','SPECIAL_ACHIEVEMENT','DAILY_STREAK']);
+
+export type XPSourceTypeType = `${z.infer<typeof XPSourceTypeSchema>}`
+
+export const XPCategorySchema = z.enum(['CORRECT_ANSWER','STREAK_BONUS','ACHIEVEMENT','MANUAL']);
+
+export type XPCategoryType = `${z.infer<typeof XPCategorySchema>}`
 
 /////////////////////////////////////////
 // MODELS
@@ -136,7 +150,6 @@ export const ProblemSchema = z.object({
   id: z.string().cuid(),
   lessonId: z.string(),
   question: z.string(),
-  options: z.string().array(),
   answer: z.string(),
   order: z.number().int(),
   createdAt: z.coerce.date(),
@@ -144,6 +157,21 @@ export const ProblemSchema = z.object({
 })
 
 export type Problem = z.infer<typeof ProblemSchema>
+
+/////////////////////////////////////////
+// PROBLEM OPTION SCHEMA
+/////////////////////////////////////////
+
+export const ProblemOptionSchema = z.object({
+  id: z.string().cuid(),
+  problemId: z.string(),
+  text: z.string(),
+  order: z.number().int(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type ProblemOption = z.infer<typeof ProblemOptionSchema>
 
 /////////////////////////////////////////
 // USER LESSON PROGRESS SCHEMA
@@ -196,6 +224,24 @@ export const UserStreakSchema = z.object({
 export type UserStreak = z.infer<typeof UserStreakSchema>
 
 /////////////////////////////////////////
+// USER XP SCHEMA
+/////////////////////////////////////////
+
+export const UserXPSchema = z.object({
+  sourceType: XPSourceTypeSchema,
+  category: XPCategorySchema,
+  id: z.string().cuid(),
+  userId: z.string(),
+  amount: z.number().int(),
+  sourceId: z.string(),
+  description: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type UserXP = z.infer<typeof UserXPSchema>
+
+/////////////////////////////////////////
 // USER PROFILE SCHEMA
 /////////////////////////////////////////
 
@@ -209,3 +255,19 @@ export const UserProfileSchema = z.object({
 })
 
 export type UserProfile = z.infer<typeof UserProfileSchema>
+
+/////////////////////////////////////////
+// TEMPORARY ANSWER SCHEMA
+/////////////////////////////////////////
+
+export const TemporaryAnswerSchema = z.object({
+  id: z.string().cuid(),
+  userId: z.string(),
+  problemId: z.string(),
+  lessonId: z.string(),
+  answer: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+})
+
+export type TemporaryAnswer = z.infer<typeof TemporaryAnswerSchema>

@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 
-import { lessonsData, problemsData } from "./lessons";
+import { lessonsData, problemsData, problemOptionsData } from "./lessons";
 
 async function seed() {
   try {
@@ -8,27 +8,32 @@ async function seed() {
     
     // Insert lessons
     console.log("Seeding lessons...");
-    for (const lesson of lessonsData) {
-      await prisma.lesson.upsert({
-        where: { id: lesson.id },
-        update: {},
-        create: lesson,
-      });
-    }
+    await prisma.lesson.createMany({
+      data: lessonsData,
+      skipDuplicates: true,
+    });
     
     // Insert problems
     console.log("Seeding problems...");
-    for (const problem of problemsData) {
-      await prisma.problem.upsert({
-        where: { id: problem.id },
-        update: {},
-        create: problem,
-      });
-    }
+    await prisma.problem.createMany({
+      data: problemsData,
+      skipDuplicates: true,
+    });
+    
+    // Insert problem options
+    console.log("Seeding problem options...");
+    // Delete existing options first to avoid duplicates
+    await prisma.problemOption.deleteMany({});
+    
+    // Then create new options
+    await prisma.problemOption.createMany({
+      data: problemOptionsData,
+    });
     
     console.log("Seeding completed successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
+    process.exit(1);
   } finally {
     await prisma.$disconnect();
   }

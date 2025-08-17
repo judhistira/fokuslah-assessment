@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { client } from "@/lib/rpc";
+import { QUERY_KEYS } from "@/lib/query-keys";
 
-interface Lesson {
+export interface Lesson {
   id: string;
   title: string;
   description: string | null;
@@ -16,18 +17,20 @@ interface Lesson {
 
 export const useGetLessons = () => {
   const query = useQuery({
-    queryKey: ["lessons"],
+    queryKey: QUERY_KEYS.LESSONS,
     queryFn: async () => {
-      const response = await client.api.lessons.index.$get();
-      
+      const response = await client.api.lessons.$get();
+
       if (!response.ok) {
         throw new Error("Failed to fetch lessons");
       }
-      
+
       const { data } = await response.json();
-      
-      return data as Lesson[];
+
+      return data;
     },
+    staleTime: 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000, // 5 minutes
   });
 
   return query;
