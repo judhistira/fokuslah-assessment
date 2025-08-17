@@ -6,6 +6,13 @@ This document serves as a central hub for developers, outlining setup instructio
 
 ---
 
+## 0. Live Deployment & Test User Credentials
+
+Our live site can be accessed through [https://fokuslah-judhistira.vercel.app](https://fokuslah-judhistira.vercel.app)
+You can get started by creating your own account
+
+---
+
 ## 1. Setup Instructions for New Team Members
 
 Welcome to the team! Follow these steps to get your local development environment running.
